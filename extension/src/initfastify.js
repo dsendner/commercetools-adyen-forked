@@ -2,6 +2,7 @@ import fastify from 'fastify'
 import errorMessages from './validator/error-messages.js';
 import makePaymentHandler from "./paymentHandler/make-payment.handler.js"
 import getPaymentMethodsHandler from "./paymentHandler/get-payment-methods.handler.js"
+import submitPaymentDetailsHandler from "./paymentHandler/submit-payment-details.handler.js"
 import { hasValidAuthorizationHeader, getStoredCredential } from './validator/authentication.js';
 import ctpClientBuilder from './ctp.js'
 import utils from './utils.js'
@@ -9,6 +10,9 @@ import config from './config/config.js'
 import { ensureCustomTypes } from './config/init/ensure-resources.js'
 import { createApiBuilderFromCtpClient } from '@commercetools/platform-sdk';
 
+/**
+ * @type {Map<string, ByProjectKeyRequestBuilder>}
+ */
 const apiBuilders = new Map()
 const logger = utils.getLogger()
 
@@ -60,15 +64,57 @@ const authHook = async (request, reply) => {
 
 server.get('/health', (_, reply) => reply.status(200).send() )
 
-server.post('/payments/', {onRequest: authHook},async (request, reply) => {
+server.post('/payments', {onRequest: authHook},async (request, reply) => {
   try {
+    const ctpProjectKey = request.headers["x-project-key"]
     // GET THE CTP CLIENT
-    const apiBuilder = await apiBuilders.get(request.body.custom.fields.commercetoolsProjectKey)
+    const apiBuilder = await apiBuilders.get(ctpProjectKey)
+    // CREATE A PAYMENT OBJECT IN CT
+    const ctPayments = await apiBuilder.payments().post({body: request.body}).execute()
+    // FETCH PAYMENT METHODS IN ADYEN
+    const result = await getPaymentMethodsHandler.execute(request.body)
+    // SAVE PAYMENT METHODS IN THE CT PAYMENT OBJECT
+    const payment = await apiBuilder.payments().withId({ ID: ctPayments.body.id }).post({ body: {
+          version: ctPayments.body.version,
+          actions: result.actions
+        }}).execute()
+
+    return reply.status(201).send(payment.body)
+  } catch (err) {
+    return reply.status(500).send(err)
+  }
+})
+
+server.post('/payments/:id/makePayment', {onRequest: authHook},async (request, reply) => {
+  try {
+    const ctpProjectKey = request.headers["x-project-key"]
+    // GET THE CTP CLIENT
+    const apiBuilder = await apiBuilders.get(ctpProjectKey)
+    // GET THE LAST VERSION OF THE PAYMENT
+    const actualPayment = await apiBuilder.payments().withId({ID: request.params.id}).get().execute()
+
+    // ADD THE REQUEST IN CT
+    const paymentWithMakePaymentRequest = await apiBuilder.payments().withId({
+                    ID: request.params.id,
+                })
+                .post({
+                    body: {
+                        actions: [
+                            {
+                                action: "setCustomField",
+                                name: "makePaymentRequest",
+                                value: JSON.stringify(request.body),
+                            },
+                        ],
+                        version: actualPayment.body.version,
+                    },
+                })
+                .execute()
     // PERFORM A MAKE PAYMENT
-    const result = await makePaymentHandler.execute(request.body)
+    const result = await makePaymentHandler.execute(paymentWithMakePaymentRequest.body)
     // UPDATE COMMERCE TOOL
-    const payment = await apiBuilder.payments().withId({ ID: request.body.id }).post({ body: {
-      version: request.body.version,
+    const payment = await apiBuilder.payments().withId({ ID: request.params.id }).post({ body: {
+      version: paymentWithMakePaymentRequest.body.version,
       actions: result.actions
     }}).execute()
     return reply.status(201).send(payment)
@@ -77,17 +123,36 @@ server.post('/payments/', {onRequest: authHook},async (request, reply) => {
   }
 })
 
-server.post('/payments/methods', {onRequest: authHook},async (request, reply) => {
+server.post('/payments/:id/additional', {onRequest: authHook},async (request, reply) => {
   try {
+    const ctpProjectKey = request.headers["x-project-key"]
     // GET THE CTP CLIENT
-    const apiBuilder = await apiBuilders.get(request.body.custom.fields.commercetoolsProjectKey)
-    // CREATE A PAYMENT OBJECT IN CT
-    const ctPayments = apiBuilder.payments().post({body: request.body}).execute()
-    // FETCH PAYMENT METHODS IN ADYEN
-    const result = await getPaymentMethodsHandler.execute(request.body)
-    // SAVE PAYMENT METHODS IN THE CT PAYMENT OBJECT
-    const payment = await apiBuilder.payments().withId({ ID: ctPayments.body.id }).post({ body: {
-          version: ctPayments.body.version,
+    const apiBuilder = await apiBuilders.get(ctpProjectKey)
+    // GET THE LAST VERSION OF THE PAYMENT
+    const actualPayment = await apiBuilder.payments().withId({ID: request.params.id}).get().execute()
+
+    // ADD THE REQUEST IN CT
+    const paymentWithAdditionalDetailRequest = await apiBuilder.payments().withId({
+                    ID: request.params.id,
+                })
+                .post({
+                    body: {
+                        actions: [
+                            {
+                                action: "setCustomField",
+                                name: "submitAdditionalPaymentDetailsRequest",
+                                value: JSON.stringify(request.body),
+                            },
+                        ],
+                        version: actualPayment.body.version,
+                    },
+                })
+                .execute()
+    // SUBMIT ADDITIONAL PAYMENT DETAILS IN ADYEN
+    const result = await submitPaymentDetailsHandler.execute(paymentWithAdditionalDetailRequest.body)
+    // SAVE INFOS IN THE CT PAYMENT OBJECT
+    const payment = await apiBuilder.payments().withId({ ID: request.params.id }).post({ body: {
+          version: paymentWithAdditionalDetailRequest.body.version,
           actions: result.actions
         }}).execute()
 
