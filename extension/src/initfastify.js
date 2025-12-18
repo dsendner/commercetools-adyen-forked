@@ -71,6 +71,11 @@ server.post('/payments', {onRequest: authHook},async (request, reply) => {
     const apiBuilder = await apiBuilders.get(ctpProjectKey)
     // CREATE A PAYMENT OBJECT IN CT
     const ctPayments = await apiBuilder.payments().post({body: request.body}).execute()
+
+    // if the user did not request getPaymentMethodsRequest then return created payment
+    if(!request.body.custom.fields.getPaymentMethodsRequest)
+      return reply.status(201).send(ctPayments.body)
+
     // FETCH PAYMENT METHODS IN ADYEN
     const result = await getPaymentMethodsHandler.execute(request.body)
     // SAVE PAYMENT METHODS IN THE CT PAYMENT OBJECT
