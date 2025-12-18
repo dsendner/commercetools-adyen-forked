@@ -72,119 +72,13 @@ server.post('/payments', {onRequest: authHook},async (request, reply) => {
 
     // GET THE CTP CLIENT
     const apiBuilder = await apiBuilders.get(ctpProjectKey)
-    
-    // CREATE A PAYMENT OBJECT IN CT
-    const ctPayment = await apiBuilder.payments().post({body: request.body}).execute()
 
     // FETCH PAYMENT METHODS IN ADYEN
-    const result = await paymentHandler.handlePayment(ctPayment.body, authToken)
+    const result = await paymentHandler.handlePayment(request.body, authToken)
 
     // SAVE PAYMENT METHODS IN THE CT PAYMENT OBJECT
-    const payment = await apiBuilder.payments().withId({ ID: ctPayment.body.id }).post({ body: {
-          version: ctPayment.body.version,
-          actions: result.actions
-        }}).execute()
-
-    return reply.status(201).send(payment.body)
-  } catch (err) {
-    return reply.status(500).send(err)
-  }
-})
-
-server.post('/payments/:id/update', {onRequest: authHook},async (request, reply) => {
-  try {
-    const ctpProjectKey = request.headers["x-project-key"]
-    const authToken = request.headers.authorization
-
-    // GET THE CTP CLIENT
-    const apiBuilder = await apiBuilders.get(ctpProjectKey)
-    
-    // UPDATE THE LAST VERSION OF THE PAYMENT
-    const updatedPayment = await apiBuilder.payments().withId({ID: request.params.id}).post(request.body).execute()
-
-    // GIVE TO ADYEN THE UPDATED PAYMENT OBJECT
-    const result = await paymentHandler.handlePayment(updatedPayment.body, authToken)
-
-    // SAVE PAYMENT METHODS IN THE CT PAYMENT OBJECT
-    const payment = await apiBuilder.payments().withId({ ID: updatedPayment.body.id }).post({ body: {
-          version: updatedPayment.body.version,
-          actions: result.actions
-        }}).execute()
-
-    return reply.status(201).send(payment.body)
-  } catch (err) {
-    return reply.status(500).send(err)
-  }
-})
-
-server.post('/payments/:id/makePayment', {onRequest: authHook},async (request, reply) => {
-  try {
-    const ctpProjectKey = request.headers["x-project-key"]
-    // GET THE CTP CLIENT
-    const apiBuilder = await apiBuilders.get(ctpProjectKey)
-    // GET THE LAST VERSION OF THE PAYMENT
-    const actualPayment = await apiBuilder.payments().withId({ID: request.params.id}).get().execute()
-
-    // ADD THE REQUEST IN CT
-    const paymentWithMakePaymentRequest = await apiBuilder.payments().withId({
-                    ID: request.params.id,
-                })
-                .post({
-                    body: {
-                        actions: [
-                            {
-                                action: "setCustomField",
-                                name: "makePaymentRequest",
-                                value: JSON.stringify(request.body),
-                            },
-                        ],
-                        version: actualPayment.body.version,
-                    },
-                })
-                .execute()
-    // PERFORM A MAKE PAYMENT
-    const result = await makePaymentHandler.execute(paymentWithMakePaymentRequest.body)
-    // UPDATE COMMERCE TOOL
-    const payment = await apiBuilder.payments().withId({ ID: request.params.id }).post({ body: {
-      version: paymentWithMakePaymentRequest.body.version,
-      actions: result.actions
-    }}).execute()
-    return reply.status(201).send(payment)
-  } catch (err) {
-    return reply.status(500).send(err)
-  }
-})
-
-server.post('/payments/:id/additional', {onRequest: authHook},async (request, reply) => {
-  try {
-    const ctpProjectKey = request.headers["x-project-key"]
-    // GET THE CTP CLIENT
-    const apiBuilder = await apiBuilders.get(ctpProjectKey)
-    // GET THE LAST VERSION OF THE PAYMENT
-    const actualPayment = await apiBuilder.payments().withId({ID: request.params.id}).get().execute()
-
-    // ADD THE REQUEST IN CT
-    const paymentWithAdditionalDetailRequest = await apiBuilder.payments().withId({
-                    ID: request.params.id,
-                })
-                .post({
-                    body: {
-                        actions: [
-                            {
-                                action: "setCustomField",
-                                name: "submitAdditionalPaymentDetailsRequest",
-                                value: JSON.stringify(request.body),
-                            },
-                        ],
-                        version: actualPayment.body.version,
-                    },
-                })
-                .execute()
-    // SUBMIT ADDITIONAL PAYMENT DETAILS IN ADYEN
-    const result = await submitPaymentDetailsHandler.execute(paymentWithAdditionalDetailRequest.body)
-    // SAVE INFOS IN THE CT PAYMENT OBJECT
-    const payment = await apiBuilder.payments().withId({ ID: request.params.id }).post({ body: {
-          version: paymentWithAdditionalDetailRequest.body.version,
+    const payment = await apiBuilder.payments().withId({ ID: request.body.id }).post({ body: {
+          version: request.body.version,
           actions: result.actions
         }}).execute()
 
