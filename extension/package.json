@@ -5,6 +5,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "postinstall": "npx patch-package",
     "test": "npm run unit",
     "test-ci": "c8 npm run test-run && npm run check-coverage",
     "test-run": "npm run unit && npm run integration",
@@ -77,6 +78,11 @@
     "run-func": "3.0.0",
     "serialize-error": "12.0.0",
     "verror": "1.10.1"
+  },
+  "overrides": {
+    "jsondiffpatch": "0.7.3",
+    "js-yaml": "4.1.1",
+    "glob": "13.0.0"
   },
   "mocha": {
     "timeout": 300000,
