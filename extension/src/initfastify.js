@@ -91,6 +91,32 @@ server.post('/payments', {onRequest: authHook},async (request, reply) => {
   }
 })
 
+server.post('/payments/:id/update', {onRequest: authHook},async (request, reply) => {
+  try {
+    const ctpProjectKey = request.headers["x-project-key"]
+    const authToken = request.headers.authorization
+
+    // GET THE CTP CLIENT
+    const apiBuilder = await apiBuilders.get(ctpProjectKey)
+    
+    // UPDATE THE LAST VERSION OF THE PAYMENT
+    const updatedPayment = await apiBuilder.payments().withId({ID: request.params.id}).post(request.body).execute()
+
+    // GIVE TO ADYEN THE UPDATED PAYMENT OBJECT
+    const result = await paymentHandler.handlePayment(updatedPayment.body, authToken)
+
+    // SAVE PAYMENT METHODS IN THE CT PAYMENT OBJECT
+    const payment = await apiBuilder.payments().withId({ ID: updatedPayment.body.id }).post({ body: {
+          version: updatedPayment.body.version,
+          actions: result.actions
+        }}).execute()
+
+    return reply.status(201).send(payment.body)
+  } catch (err) {
+    return reply.status(500).send(err)
+  }
+})
+
 server.post('/payments/:id/makePayment', {onRequest: authHook},async (request, reply) => {
   try {
     const ctpProjectKey = request.headers["x-project-key"]
