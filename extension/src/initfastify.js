@@ -9,6 +9,7 @@ import utils from './utils.js'
 import config from './config/config.js'
 import { ensureCustomTypes } from './config/init/ensure-resources.js'
 import { createApiBuilderFromCtpClient } from '@commercetools/platform-sdk';
+import paymentHandler from './paymentHandler/payment-handler.js'
 
 /**
  * @type {Map<string, ByProjectKeyRequestBuilder>}
@@ -67,20 +68,20 @@ server.get('/health', (_, reply) => reply.status(200).send() )
 server.post('/payments', {onRequest: authHook},async (request, reply) => {
   try {
     const ctpProjectKey = request.headers["x-project-key"]
+    const authToken = request.headers.authorization
+
     // GET THE CTP CLIENT
     const apiBuilder = await apiBuilders.get(ctpProjectKey)
+    
     // CREATE A PAYMENT OBJECT IN CT
-    const ctPayments = await apiBuilder.payments().post({body: request.body}).execute()
-
-    // if the user did not request getPaymentMethodsRequest then return created payment
-    if(!request.body.custom.fields.getPaymentMethodsRequest)
-      return reply.status(201).send(ctPayments.body)
+    const ctPayment = await apiBuilder.payments().post({body: request.body}).execute()
 
     // FETCH PAYMENT METHODS IN ADYEN
-    const result = await getPaymentMethodsHandler.execute(request.body)
+    const result = await paymentHandler.handlePayment(ctPayment.body, authToken)
+
     // SAVE PAYMENT METHODS IN THE CT PAYMENT OBJECT
-    const payment = await apiBuilder.payments().withId({ ID: ctPayments.body.id }).post({ body: {
-          version: ctPayments.body.version,
+    const payment = await apiBuilder.payments().withId({ ID: ctPayment.body.id }).post({ body: {
+          version: ctPayment.body.version,
           actions: result.actions
         }}).execute()
 
