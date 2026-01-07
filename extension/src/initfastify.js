@@ -10,6 +10,9 @@ import config from './config/config.js'
 import { ensureCustomTypes } from './config/init/ensure-resources.js'
 import { createApiBuilderFromCtpClient } from '@commercetools/platform-sdk';
 import paymentHandler from './paymentHandler/payment-handler.js'
+import { setTimeout } from 'node:timers/promises';
+
+const SLOWED_CUSTOMERS = ['00u2dklydwrzZCIVG0h8']
 
 /**
  * @type {Map<string, ByProjectKeyRequestBuilder>}
@@ -39,6 +42,31 @@ async function setupExtensionResources() {
         adyenMerchantAccounts,
       )}`,
   )
+}
+
+async function slowRequestIfShopperReferenceIsBlackListed(paymentObject) {
+  let shouldSlow = false;
+  // try to get the shopper ref from the paymentMethodsRequest
+  if(paymentObject.custom.fields.getPaymentMethodsRequest) {
+    // parse json
+    const obj = JSON.parse(paymentObject.custom.fields.getPaymentMethodsRequest)
+    if(obj.shopperReference && SLOWED_CUSTOMERS.includes(obj.shopperReference)) {
+      shouldSlow = true
+    }
+  }
+
+  if(paymentObject.custom.fields.makePaymentRequest) {
+    // parse json
+    const obj = JSON.parse(paymentObject.custom.fields.makePaymentRequest)
+    if(obj.shopperReference && SLOWED_CUSTOMERS.includes(obj.shopperReference)) {
+      shouldSlow = true
+    }
+  }
+  
+  if(shouldSlow) {
+    // wait 15s
+    await setTimeout(15000)
+  }
 }
 
 await setupExtensionResources()
@@ -76,6 +104,9 @@ server.post('/payments', {onRequest: authHook},async (request, reply) => {
     // FETCH PAYMENT METHODS IN ADYEN
     const result = await paymentHandler.handlePayment(request.body, authToken)
 
+    // IF THE USER AS A SPECIAL OKTAID, DELAY THE REQUEST OF 15 seconds
+    await slowRequestIfShopperReferenceIsBlackListed(request.body)
+
     // SAVE PAYMENT METHODS IN THE CT PAYMENT OBJECT
     const payment = await apiBuilder.payments().withId({ ID: request.body.id }).post({ body: {
           version: request.body.version,
@@ -86,6 +117,25 @@ server.post('/payments', {onRequest: authHook},async (request, reply) => {
   } catch (err) {
     return reply.status(500).send(err)
   }
+})
+
+server.post('/slowed-users', async (req, rep) => {
+  SLOWED_CUSTOMERS.push(req.body)
+  rep.send()
+})
+
+server.get('/slowed-users', async (req, rep) => {
+  rep.send(SLOWED_CUSTOMERS)
+})
+
+server.delete('/slowed-users', async (req, rep) => {
+  SLOWED_CUSTOMERS
+  const index = SLOWED_CUSTOMERS.indexOf(req.body);
+  if (index > -1) {
+    SLOWED_CUSTOMERS.splice(index, 1);
+    rep.send()
+  }
+  rep.status(404).send()
 })
 
 server.listen({ port: 8080, host: "0.0.0.0" }, (err, address) => {
