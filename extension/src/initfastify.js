@@ -77,11 +77,11 @@ const authHook = async (request, reply) => {
   const authToken = request.headers.authorization;
   const ctpProjectKey = request.headers["x-project-key"]
       const storedCredential = getStoredCredential(ctpProjectKey)
-      if (!storedCredential)
-        return reply.code(401).send({ 
-          error: 'Unauthorized',
-          message: errorMessages.MISSING_CREDENTIAL
-        });
+      // if (!storedCredential)
+      //   return reply.code(401).send({ 
+      //     error: 'Unauthorized',
+      //     message: errorMessages.MISSING_CREDENTIAL
+      //   });
       // else if (!hasValidAuthorizationHeader(storedCredential, authToken)) {
       //   return reply.code(401).send({ 
       //     error: 'Unauthorized',
