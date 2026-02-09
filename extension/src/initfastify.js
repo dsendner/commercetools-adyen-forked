@@ -107,13 +107,21 @@ server.post('/payments', {onRequest: authHook},async (request, reply) => {
     // IF THE USER AS A SPECIAL OKTAID, DELAY THE REQUEST OF 15 seconds
     await slowRequestIfShopperReferenceIsBlackListed(request.body)
 
-    // SAVE PAYMENT METHODS IN THE CT PAYMENT OBJECT
-    const payment = await apiBuilder.payments().withId({ ID: request.body.id }).post({ body: {
+    if(result.errors) {
+      return reply.status(400).send(result.errors)
+    }
+
+    try {
+      // SAVE PAYMENT METHODS IN THE CT PAYMENT OBJECT
+      const payment = await apiBuilder.payments().withId({ ID: request.body.id }).post({ body: {
           version: request.body.version,
           actions: result.actions
         }}).execute()
+        return reply.status(201).send(payment.body)
 
-    return reply.status(201).send(payment.body)
+    } catch (err) {
+      return reply.status(err.code).send(err.body)
+    }
   } catch (err) {
     return reply.status(500).send(err)
   }
