@@ -101,7 +101,7 @@ server.post('/payments', {onRequest: authHook},async (request, reply) => {
     // GET THE CTP CLIENT
     const apiBuilder = await apiBuilders.get(ctpProjectKey)
 
-    // FETCH PAYMENT METHODS IN ADYEN
+    // HANDLE PAYMENT
     const result = await paymentHandler.handlePayment(request.body, authToken)
 
     // IF THE USER AS A SPECIAL OKTAID, DELAY THE REQUEST OF 15 seconds
@@ -111,10 +111,21 @@ server.post('/payments', {onRequest: authHook},async (request, reply) => {
       return reply.status(400).send(result.errors)
     }
 
+    // AFTER HANDLING THE PAYMENT, NOTIFICATION CONNECTOR CAN UPDATE THE PAYMENT OBJECT
+    // IF IT DOES, WE MIGHT HAVE A CONFLICT IN THE PAYMENT VERSION
+    // SO UNTIL WE REWORK THE ENTIRE PAYMENT SYSTEM, WE ADD 1s SLEEP
+    
+    await setTimeout(1000)
+    
+    // THEN GET THE LATEST VERSION OF THE PAYMENT AND AVOID CONFLICTS
+    const latestPayment = await apiBuilder.payments()
+                .withId({ ID: request.body.id })
+                .get()
+                .execute()
+
     try {
-      // SAVE PAYMENT METHODS IN THE CT PAYMENT OBJECT
       const payment = await apiBuilder.payments().withId({ ID: request.body.id }).post({ body: {
-          version: request.body.version,
+          version: latestPayment.body.version,
           actions: result.actions
         }}).execute()
         return reply.status(201).send(payment.body)
