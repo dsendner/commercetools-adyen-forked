@@ -1,9 +1,5 @@
 import fastify from 'fastify'
-import errorMessages from './validator/error-messages.js';
-import makePaymentHandler from "./paymentHandler/make-payment.handler.js"
-import getPaymentMethodsHandler from "./paymentHandler/get-payment-methods.handler.js"
-import submitPaymentDetailsHandler from "./paymentHandler/submit-payment-details.handler.js"
-import { hasValidAuthorizationHeader, getStoredCredential } from './validator/authentication.js';
+import { getStoredCredential } from './validator/authentication.js';
 import ctpClientBuilder from './ctp.js'
 import utils from './utils.js'
 import config from './config/config.js'
@@ -123,6 +119,11 @@ server.post('/payments', {onRequest: authHook},async (request, reply) => {
                 .get()
                 .execute()
 
+    // IF THE SET KEY HAS ALREADY BEEN DONE, REMOVE IT FROM THE ACTIONS
+    if(latestPayment.body.key && result.actions.some(a => a.action === "setKey" && a.key === latestPayment.body.key)) {
+      // remove the action from le list to avoid issue
+      result.actions = result.actions.filter(a => !(a.action === "setKey" && a.key === latestPayment.body.key))
+    }
     try {
       const payment = await apiBuilder.payments().withId({ ID: request.body.id }).post({ body: {
           version: latestPayment.body.version,
@@ -131,19 +132,6 @@ server.post('/payments', {onRequest: authHook},async (request, reply) => {
         return reply.status(201).send(payment.body)
 
     } catch (err) {
-      // HOTFIX RACE CONDITION
-      // IT CAN HAPPEN THAT THE NOTIFICATION UPDATE THE SAME FIELDS AS THE ONE WE WANT TO UPDATE HAS WELL
-      // IF THIS CASE HAPPEN, JUST GET THE LATEST PAYMENT OBJECT AND RETURN IT
-      if ( err.errors.length === 2 && 
-        err.errors.find(err => err.code === 'InvalidOperation' && err.code === "'key' has no changes.") &&
-        err.errors.find(err => err.code === 'DuplicateField')
-      ) {
-        const latestPayment = await apiBuilder.payments()
-                .withId({ ID: request.body.id })
-                .get()
-                .execute()
-        return reply.status(201).send(latestPayment.body)  
-      }
       return reply.status(err.code).send(err.body)
     }
   } catch (err) {
