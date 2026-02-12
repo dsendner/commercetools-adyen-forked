@@ -131,6 +131,19 @@ server.post('/payments', {onRequest: authHook},async (request, reply) => {
         return reply.status(201).send(payment.body)
 
     } catch (err) {
+      // HOTFIX RACE CONDITION
+      // IT CAN HAPPEN THAT THE NOTIFICATION UPDATE THE SAME FIELDS AS THE ONE WE WANT TO UPDATE HAS WELL
+      // IF THIS CASE HAPPEN, JUST GET THE LATEST PAYMENT OBJECT AND RETURN IT
+      if ( err.errors.length === 2 && 
+        err.errors.find(err => err.code === 'InvalidOperation' && err.code === "'key' has no changes.") &&
+        err.errors.find(err => err.code === 'DuplicateField')
+      ) {
+        const latestPayment = await apiBuilder.payments()
+                .withId({ ID: request.body.id })
+                .get()
+                .execute()
+        return reply.status(201).send(latestPayment.body)  
+      }
       return reply.status(err.code).send(err.body)
     }
   } catch (err) {
