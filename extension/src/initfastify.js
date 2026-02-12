@@ -1,9 +1,5 @@
 import fastify from 'fastify'
-import errorMessages from './validator/error-messages.js';
-import makePaymentHandler from "./paymentHandler/make-payment.handler.js"
-import getPaymentMethodsHandler from "./paymentHandler/get-payment-methods.handler.js"
-import submitPaymentDetailsHandler from "./paymentHandler/submit-payment-details.handler.js"
-import { hasValidAuthorizationHeader, getStoredCredential } from './validator/authentication.js';
+import { getStoredCredential } from './validator/authentication.js';
 import ctpClientBuilder from './ctp.js'
 import utils from './utils.js'
 import config from './config/config.js'
@@ -123,6 +119,11 @@ server.post('/payments', {onRequest: authHook},async (request, reply) => {
                 .get()
                 .execute()
 
+    // IF THE SET KEY HAS ALREADY BEEN DONE, REMOVE IT FROM THE ACTIONS
+    if(latestPayment.body.key && result.actions.some(a => a.action === "setKey" && a.key === latestPayment.body.key)) {
+      // remove the action from le list to avoid issue
+      result.actions = result.actions.filter(a => !(a.action === "setKey" && a.key === latestPayment.body.key))
+    }
     try {
       const payment = await apiBuilder.payments().withId({ ID: request.body.id }).post({ body: {
           version: latestPayment.body.version,
