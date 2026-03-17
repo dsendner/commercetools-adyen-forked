@@ -1,12 +1,12 @@
 import fastify from 'fastify'
-import { getStoredCredential } from './validator/authentication.js';
+import { getStoredCredential } from './validator/authentication.js'
 import ctpClientBuilder from './ctp.js'
 import utils from './utils.js'
 import config from './config/config.js'
 import { ensureCustomTypes } from './config/init/ensure-resources.js'
-import { createApiBuilderFromCtpClient } from '@commercetools/platform-sdk';
+import { createApiBuilderFromCtpClient } from '@commercetools/platform-sdk'
 import paymentHandler from './paymentHandler/payment-handler.js'
-import { setTimeout } from 'node:timers/promises';
+import { setTimeout } from 'node:timers/promises'
 
 const SLOWED_CUSTOMERS = ['00u2dklydwrzZCIVG0h8']
 
@@ -16,7 +16,6 @@ const SLOWED_CUSTOMERS = ['00u2dklydwrzZCIVG0h8']
 const apiBuilders = new Map()
 const logger = utils.getLogger()
 
-
 async function setupExtensionResources() {
   const ctpProjectKeys = config.getAllCtpProjectKeys()
   const adyenMerchantAccounts = config.getAllAdyenMerchantAccounts()
@@ -25,7 +24,12 @@ async function setupExtensionResources() {
     ctpProjectKeys.map(async (ctpProjectKey) => {
       const ctpConfig = config.getCtpConfig(ctpProjectKey)
       const ctpClient = await ctpClientBuilder.get(ctpConfig)
-      apiBuilders.set(ctpProjectKey, createApiBuilderFromCtpClient(ctpClient).withProjectKey({ projectKey: ctpProjectKey}))
+      apiBuilders.set(
+        ctpProjectKey,
+        createApiBuilderFromCtpClient(ctpClient).withProjectKey({
+          projectKey: ctpProjectKey,
+        }),
+      )
       await ensureCustomTypes(ctpClient, ctpProjectKey)
     }),
   )
@@ -41,25 +45,31 @@ async function setupExtensionResources() {
 }
 
 async function slowRequestIfShopperReferenceIsBlackListed(paymentObject) {
-  let shouldSlow = false;
+  let shouldSlow = false
   // try to get the shopper ref from the paymentMethodsRequest
-  if(paymentObject.custom.fields.getPaymentMethodsRequest) {
+  if (paymentObject.custom.fields.getPaymentMethodsRequest) {
     // parse json
     const obj = JSON.parse(paymentObject.custom.fields.getPaymentMethodsRequest)
-    if(obj.shopperReference && SLOWED_CUSTOMERS.includes(obj.shopperReference)) {
+    if (
+      obj.shopperReference &&
+      SLOWED_CUSTOMERS.includes(obj.shopperReference)
+    ) {
       shouldSlow = true
     }
   }
 
-  if(paymentObject.custom.fields.makePaymentRequest) {
+  if (paymentObject.custom.fields.makePaymentRequest) {
     // parse json
     const obj = JSON.parse(paymentObject.custom.fields.makePaymentRequest)
-    if(obj.shopperReference && SLOWED_CUSTOMERS.includes(obj.shopperReference)) {
+    if (
+      obj.shopperReference &&
+      SLOWED_CUSTOMERS.includes(obj.shopperReference)
+    ) {
       shouldSlow = true
     }
   }
-  
-  if(shouldSlow) {
+
+  if (shouldSlow) {
     // wait 15s
     await setTimeout(15000)
   }
@@ -69,29 +79,29 @@ await setupExtensionResources()
 
 const server = fastify()
 
-const authHook = async (request, reply) => {
-  const authToken = request.headers.authorization;
-  const ctpProjectKey = request.headers["x-project-key"]
-      const storedCredential = getStoredCredential(ctpProjectKey)
-      // if (!storedCredential)
-      //   return reply.code(401).send({ 
-      //     error: 'Unauthorized',
-      //     message: errorMessages.MISSING_CREDENTIAL
-      //   });
-      // else if (!hasValidAuthorizationHeader(storedCredential, authToken)) {
-      //   return reply.code(401).send({ 
-      //     error: 'Unauthorized',
-      //     message: errorMessages.UNAUTHORIZED_REQUEST
-      //   });
-      // }
-      return this
-    }
+const authHook = async (request) => {
+  const ctpProjectKey = request.headers['x-project-key']
+  // eslint-disable-next-line no-unused-vars
+  const storedCredential = getStoredCredential(ctpProjectKey)
+  // if (!storedCredential)
+  //   return reply.code(401).send({
+  //     error: 'Unauthorized',
+  //     message: errorMessages.MISSING_CREDENTIAL
+  //   });
+  // else if (!hasValidAuthorizationHeader(storedCredential, authToken)) {
+  //   return reply.code(401).send({
+  //     error: 'Unauthorized',
+  //     message: errorMessages.UNAUTHORIZED_REQUEST
+  //   });
+  // }
+  return this
+}
 
-server.get('/health', (_, reply) => reply.status(200).send() )
+server.get('/health', (_, reply) => reply.status(200).send())
 
-server.post('/payments', {onRequest: authHook},async (request, reply) => {
+server.post('/payments', { onRequest: authHook }, async (request, reply) => {
   try {
-    const ctpProjectKey = request.headers["x-project-key"]
+    const ctpProjectKey = request.headers['x-project-key']
     const authToken = request.headers.authorization
 
     // GET THE CTP CLIENT
@@ -103,34 +113,47 @@ server.post('/payments', {onRequest: authHook},async (request, reply) => {
     // IF THE USER AS A SPECIAL OKTAID, DELAY THE REQUEST OF 15 seconds
     await slowRequestIfShopperReferenceIsBlackListed(request.body)
 
-    if(result.errors) {
+    if (result.errors) {
       return reply.status(400).send(result.errors)
     }
 
     // AFTER HANDLING THE PAYMENT, NOTIFICATION CONNECTOR CAN UPDATE THE PAYMENT OBJECT
     // IF IT DOES, WE MIGHT HAVE A CONFLICT IN THE PAYMENT VERSION
     // SO UNTIL WE REWORK THE ENTIRE PAYMENT SYSTEM, WE ADD 1s SLEEP
-    
+
     await setTimeout(1000)
-    
+
     // THEN GET THE LATEST VERSION OF THE PAYMENT AND AVOID CONFLICTS
-    const latestPayment = await apiBuilder.payments()
-                .withId({ ID: request.body.id })
-                .get()
-                .execute()
+    const latestPayment = await apiBuilder
+      .payments()
+      .withId({ ID: request.body.id })
+      .get()
+      .execute()
 
     // IF THE SET KEY HAS ALREADY BEEN DONE, REMOVE IT FROM THE ACTIONS
-    if(latestPayment.body.key && result.actions.some(a => a.action === "setKey" && a.key === latestPayment.body.key)) {
+    if (
+      latestPayment.body.key &&
+      result.actions.some(
+        (a) => a.action === 'setKey' && a.key === latestPayment.body.key,
+      )
+    ) {
       // remove the action from le list to avoid issue
-      result.actions = result.actions.filter(a => !(a.action === "setKey" && a.key === latestPayment.body.key))
+      result.actions = result.actions.filter(
+        (a) => !(a.action === 'setKey' && a.key === latestPayment.body.key),
+      )
     }
     try {
-      const payment = await apiBuilder.payments().withId({ ID: request.body.id }).post({ body: {
-          version: latestPayment.body.version,
-          actions: result.actions
-        }}).execute()
-        return reply.status(201).send(payment.body)
-
+      const payment = await apiBuilder
+        .payments()
+        .withId({ ID: request.body.id })
+        .post({
+          body: {
+            version: latestPayment.body.version,
+            actions: result.actions,
+          },
+        })
+        .execute()
+      return reply.status(201).send(payment.body)
     } catch (err) {
       return reply.status(err.code).send(err.body)
     }
@@ -150,15 +173,15 @@ server.get('/slowed-users', async (req, rep) => {
 
 server.delete('/slowed-users', async (req, rep) => {
   SLOWED_CUSTOMERS
-  const index = SLOWED_CUSTOMERS.indexOf(req.body);
+  const index = SLOWED_CUSTOMERS.indexOf(req.body)
   if (index > -1) {
-    SLOWED_CUSTOMERS.splice(index, 1);
+    SLOWED_CUSTOMERS.splice(index, 1)
     rep.send()
   }
   rep.status(404).send()
 })
 
-server.listen({ port: 8080, host: "0.0.0.0" }, (err, address) => {
+server.listen({ port: 8080, host: '0.0.0.0' }, (err, address) => {
   if (err) {
     console.error(err)
     process.exit(1)

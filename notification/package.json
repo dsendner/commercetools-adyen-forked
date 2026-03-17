@@ -1,9 +1,10 @@
 {
   "name": "commercetools-adyen-integration-notification",
-  "version": "11.8.0",
+  "version": "11.11.0",
   "description": "Part of the integration of Adyen with commercetools responsible to receive and process notifications from Adyen",
   "type": "module",
   "scripts": {
+    "postinstall": "npx patch-package",
     "check-coverage": "c8 check-coverage --lines 73",
     "test-run": "npm run unit && npm run integration",
     "test-ci": "c8 npm run test-run && npm run check-coverage",
@@ -59,6 +60,11 @@
     "serialize-error": "12.0.0",
     "verror": "1.10.1"
   },
+  "overrides": {
+    "jsondiffpatch": "0.7.2",
+    "js-yaml": "4.1.1",
+    "glob": "13.0.0"
+  },
   "devDependencies": {
     "@eslint/js": "^9.4.0",
     "@ngrok/ngrok": "^1.5.2",
@@ -67,7 +73,7 @@
     "chai": "5.2.0",
     "chai-as-promised": "8.0.1",
     "dotenv": "^17.2.2",
-    "eslint": "9.39.1",
+    "eslint": "9.39.2",
     "eslint-config-prettier": "10.1.5",
     "mocha": "11.7.0",
     "nock": "14.0.5",
